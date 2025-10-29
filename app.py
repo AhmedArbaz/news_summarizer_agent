@@ -1,66 +1,106 @@
 import streamlit as st
 import requests
-from dotenv import load_dotenv
-import os
 import google.generativeai as genai
 
-# Load API keys from .env file
-load_dotenv()
 
-NEWS_API_KEY = os.getenv("NEWS_API_KEY")
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+NEWS_API_KEY = st.secrets["NEWS_API_KEY"]
+GOOGLE_API_KEY = st.secrets["GOOGLE_API_KEY"]
 
-# Configure Google Gemini API
+
 genai.configure(api_key=GOOGLE_API_KEY)
-model = genai.GenerativeModel("gemini-2.5-flash")
+model = genai.GenerativeModel("gemini-1.5-flash")
 
-# Streamlit UI
-st.set_page_config(page_title="📰 AI News Summarizer", page_icon="🧠", layout="wide")
+st.set_page_config(
+    page_title="🧠 AI News Summarizer",
+    page_icon="📰",
+    layout="wide",
+)
 
-st.title("🧠 AI News Summarizer")
-st.write("Fetch and summarize the latest news using AI 🤖")
 
-# Input field for topic
-topic = st.text_input("Enter a topic (e.g., Technology, Sports, AI):", "")
+st.markdown("""
+    <style>
+    body {
+        background-color: #0e1117;
+        color: white;
+    }
+    .stApp {
+        background-color: #0e1117;
+    }
+    .news-card {
+        background-color: #1a1d25;
+        padding: 20px;
+        border-radius: 15px;
+        box-shadow: 0 0 15px rgba(255,255,255,0.05);
+        margin-bottom: 20px;
+        transition: all 0.3s ease;
+    }
+    .news-card:hover {
+        transform: scale(1.02);
+        box-shadow: 0 0 25px rgba(255,255,255,0.1);
+    }
+    .news-img {
+        border-radius: 10px;
+        margin-bottom: 10px;
+    }
+    .title {
+        color: #a5d8ff;
+        font-weight: bold;
+    }
+    a {
+        color: #89c2d9;
+        text-decoration: none;
+    }
+    a:hover {
+        text-decoration: underline;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+
+st.title("📰 AI News Summarizer")
+st.caption("Summarize the latest world news using Google Gemini AI ✨")
+
+# ==========================
+# 🔍 User Input
+# ==========================
+topic = st.text_input("Enter a topic (e.g., AI, Sports, Business):")
 
 if st.button("Summarize News"):
     if not topic:
         st.warning("⚠️ Please enter a topic.")
     else:
-        st.info(f"Fetching latest news about **{topic}**...")
+        st.info(f"Fetching the latest **{topic}** news...")
 
         # Fetch news from NewsAPI
-        url = f"https://newsapi.org/v2/everything?q={topic}&sortBy=publishedAt&language=en&apiKey={NEWS_API_KEY}"
+        url = f"https://newsapi.org/v2/everything?q={topic}&language=en&sortBy=publishedAt&apiKey={NEWS_API_KEY}"
         response = requests.get(url)
         data = response.json()
 
         if data.get("articles"):
-            articles = data["articles"][:5]  # limit to 5 latest articles
-            summaries = []
+            articles = data["articles"][:5]
 
             for article in articles:
                 title = article.get("title")
-                description = article.get("description", "No description available.")
+                description = article.get("description", "")
+                image = article.get("urlToImage")
+                link = article.get("url")
+
                 content = f"Title: {title}\nDescription: {description}"
 
                 # Summarize using Gemini AI
-                prompt = f"Summarize this news article in 3-4 concise sentences:\n\n{content}"
-                ai_summary = model.generate_content(prompt).text
+                try:
+                    prompt = f"Summarize this news article in 3-4 short sentences:\n\n{content}"
+                    summary = model.generate_content(prompt).text
+                except Exception:
+                    summary = "AI summary unavailable at the moment."
 
-                summaries.append({
-                    "title": title,
-                    "summary": ai_summary,
-                    "url": article.get("url")
-                })
-
-            st.success("✅ News summarized successfully!")
-
-            # Display results
-            for s in summaries:
-                st.subheader(s["title"])
-                st.write(s["summary"])
-                st.markdown(f"[Read full article here]({s['url']})")
-                st.divider()
-
+                # Display result
+                st.markdown('<div class="news-card">', unsafe_allow_html=True)
+                if image:
+                    st.image(image, use_container_width=True, caption=title)
+                st.markdown(f"<h3 class='title'>{title}</h3>", unsafe_allow_html=True)
+                st.write(summary)
+                st.markdown(f"[📰 Read full article]({link})")
+                st.markdown("</div>", unsafe_allow_html=True)
         else:
-            st.error("No news found. Try a different topic.")
+            st.error("No news found. Try another topic.")
