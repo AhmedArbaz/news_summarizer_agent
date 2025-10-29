@@ -1,92 +1,48 @@
 import streamlit as st
-import os
-from dotenv import load_dotenv
-import google.generativeai as genai
 import requests
+import google.generativeai as genai
 
-# ----------------------------
-# Load environment variables
-# ----------------------------
-load_dotenv()
+# ✅ Load secrets from Streamlit Cloud (or local .streamlit/secrets.toml)
+NEWS_API_KEY = st.secrets["NEWS_API_KEY"]
+GOOGLE_API_KEY = st.secrets["GOOGLE_API_KEY"]
 
-# Safe access to Streamlit secrets (only if available)
-def get_secret(key: str):
-    try:
-        return st.secrets[key]
-    except Exception:
-        return None
-
-# Load API keys safely (works both locally & on Streamlit Cloud)
-NEWS_API_KEY = get_secret("NEWS_API_KEY") or os.getenv("NEWS_API_KEY")
-GOOGLE_API_KEY = get_secret("GOOGLE_API_KEY") or os.getenv("GOOGLE_API_KEY")
-
-# Validate API keys
-if not NEWS_API_KEY or not GOOGLE_API_KEY:
-    st.error("❌ Missing API keys! Please add them to `.env` (for local use) or Streamlit Secrets (for cloud).")
-    st.stop()
-
-# Configure Gemini API
+# ✅ Configure Gemini
 genai.configure(api_key=GOOGLE_API_KEY)
 
-# ----------------------------
-# Streamlit App UI
-# ----------------------------
-st.set_page_config(page_title="🧠 News Summarizer Agent", page_icon="🗞️", layout="centered")
+st.set_page_config(page_title="AI News Summarizer", page_icon="📰", layout="wide")
 
-st.title("🧠 News Summarizer Agent")
-st.caption("Built with Streamlit + Gemini AI + NewsAPI")
+st.title("📰 AI News Summarizer")
+st.write("Fetch and summarize the latest news articles using Google Gemini.")
 
-st.write("Enter a **keyword or topic** below to fetch and summarize the latest news.")
+# --- User Input ---
+query = st.text_input("Enter a topic (e.g. AI, Technology, Sports):")
 
-query = st.text_input("🔍 Search for News:", placeholder="e.g., Artificial Intelligence, Climate Change, Sports...")
-
-if st.button("Fetch & Summarize"):
-    if not query.strip():
-        st.warning("⚠️ Please enter a topic to search.")
+if st.button("Get News"):
+    if not query:
+        st.warning("⚠️ Please enter a topic to search for news.")
     else:
-        with st.spinner("Fetching latest news..."):
-            # Fetch top headlines from NewsAPI
-            url = f"https://newsapi.org/v2/everything?q={query}&sortBy=publishedAt&language=en&apiKey={NEWS_API_KEY}"
-            response = requests.get(url)
-            
-            if response.status_code != 200:
-                st.error("Failed to fetch news. Please check your API key or try again later.")
-                st.stop()
+        url = f"https://newsapi.org/v2/everything?q={query}&apiKey={NEWS_API_KEY}"
+        response = requests.get(url)
 
+        if response.status_code == 200:
             data = response.json()
             articles = data.get("articles", [])
 
             if not articles:
-                st.warning("No news found for your query.")
-                st.stop()
+                st.info("No news articles found for this topic.")
+            else:
+                for i, article in enumerate(articles[:5], 1):
+                    st.subheader(f"{i}. {article['title']}")
+                    st.write(article['description'] or "")
+                    st.write(f"[Read more]({article['url']})")
 
-            # Combine top 5 articles
-            combined_text = ""
-            for article in articles[:5]:
-                combined_text += f"Title: {article['title']}\nDescription: {article.get('description', '')}\n\n"
-
-        st.success("✅ News fetched successfully!")
-
-        with st.spinner("Summarizing using Gemini AI..."):
-            try:
-                # ✅ Use updated model name
-                model = genai.GenerativeModel("gemini-2.5-flash")
-                prompt = f"Summarize the following news articles into key insights:\n\n{combined_text}"
-                summary = model.generate_content(prompt)
-
-                st.subheader("🧾 Summary")
-                st.write(summary.text)
-
-            except Exception as e:
-                st.error(f"Error generating summary: {e}")
-
-        with st.expander("📰 View Raw Articles"):
-            for i, article in enumerate(articles[:5], 1):
-                st.markdown(f"**{i}. {article['title']}**")
-                st.markdown(f"_{article.get('source', {}).get('name', 'Unknown Source')}_")
-                st.write(article.get("description", "No description available"))
-                st.markdown(f"[Read Full Article]({article['url']})")
-                st.markdown("---")
-
-st.markdown("---")
-st.caption("Created by Ahmad Hassan • Powered by Streamlit & Gemini AI 🚀")
+                    # --- AI Summary ---
+                    prompt = f"Summarize this news article in 3 sentences:\n\n{article['title']}\n{article['description']}"
+                    try:
+                        model = genai.GenerativeModel("gemini-1.5-flash")
+                        summary = model.generate_content(prompt)
+                        st.success(summary.text.strip())
+                    except Exception as e:
+                        st.error(f"AI summary failed: {e}")
+        else:
+            st.error(f"News API error: {response.status_code}")
